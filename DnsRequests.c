@@ -12,7 +12,6 @@
 #include <sys/types.h>
 #include <netinet/in.h>     // sock_addr_in, "man 7 ip" ,htons
 #include <arpa/inet.h>   //inet_addr,inet_a ton
-#include <unistd.h>        //read,write
 #include <stdio.h>
 #include <string.h>          // memset
 #include <stdlib.h>
@@ -101,39 +100,35 @@ char* GetRemoteDns(char* domain) {
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv));
     unsigned int addr_len = sizeof(struct sockaddr_in);
 
-
     // 通过Socket向DNS服务器发送查询请求
     if (sendto(sock, buf, sizeof(DnsHeader) + sizeof(DnsQuestion) + strlen(domain) + 2, 0, &addr, addr_len) < 0) {
         printf("errno=%d\n",errno);
     }
 
-//    sleep(1);
-    // 接收服务器的响应数据
-    int flag = recvfrom(sock, buf, BUF_SIZE, 0, (struct sockaddr*)(&addr), &addr_len);
+    // 非阻塞监听响应
+    while(1) {
+        int flag = recvfrom(sock, buf, BUF_SIZE, 0, (struct sockaddr*)(&addr), &addr_len);
+        if (flag == -1 && errno != EAGAIN) {
+            perror("recv failed.\n");
+            exit(1);
+        }else if (flag == 0 || (flag==-1 && errno==EAGAIN)) {
+            continue;
+        }
+        if (flag == -1 && errno != EAGAIN) {
+            perror("recv failed.\n");
+            exit(1);
+        }
 
-
-
-    if (flag < 0)
-    {
-        printf("接收失败 flag为%d\n", flag);
-        printf("buffer为%s\n", buf);
-        return (char*)"接收失败";
+        p = buf + flag - 4;
+//        printf("%s ==> %u.%u.%u.%u\n", domain, (unsigned char)*p, (unsigned char)*(p + 1), (unsigned char)*(p + 2), (unsigned char)*(p + 3));
+        char str[INET_ADDRSTRLEN];
+        char* IP = (char*)inet_ntop(AF_INET, p, str, sizeof(str));
+        return IP;
     }
-    if (header->numa == 0)
-    {
-        printf("Ack 错误\n");
-        return (char*)"Ack 错误";
-    }
-    p = buf + flag - 4;
-//    printf("%s ==> %u.%u.%u.%u\n", domain, (unsigned char)*p, (unsigned char)*(p + 1), (unsigned char)*(p + 2), (unsigned char)*(p + 3));
-
-    char str[INET_ADDRSTRLEN];
-    char* IP = (char*)inet_ntop(AF_INET, p, str, sizeof(str));
-    return IP;
-
 }
 
+/*
 int main() {
     printf("%s\n", GetRemoteDns((char*)"www.baidu.com"));
     return 0;
-}
+}*/
