@@ -1,7 +1,7 @@
 //
 // Created by alisdlyc on 2020/8/14.
 //
-#ifdef win32
+#ifdef WIN32
 #include <stdio.h>
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
@@ -16,6 +16,8 @@
 #include <string.h>          // memset
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
+
 typedef int SOCKET;
 typedef unsigned char BYTE;
 typedef unsigned long DWORD;
@@ -96,39 +98,34 @@ char* GetRemoteDns(char* domain) {
     // 设置超时
     struct timeval tv;
     tv.tv_sec = 1;
-    tv.tv_usec = 200;
+    tv.tv_usec = 500;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv));
     unsigned int addr_len = sizeof(struct sockaddr_in);
 
     // 通过Socket向DNS服务器发送查询请求
-    if (sendto(sock, buf, sizeof(DnsHeader) + sizeof(DnsQuestion) + strlen(domain) + 2, 0, &addr, addr_len) < 0) {
+    if (sendto(sock, buf, sizeof(DnsHeader) + sizeof(DnsQuestion) + strlen(domain) + 2, 0, (struct sockaddr*)&addr, addr_len) < 0) {
         printf("errno=%d\n",errno);
+        return (char *)"qwq";
     }
 
     // 非阻塞监听响应
     while(1) {
         int flag = recvfrom(sock, buf, BUF_SIZE, 0, (struct sockaddr*)(&addr), &addr_len);
-        if (flag == -1 && errno != EAGAIN) {
-            perror("recv failed.\n");
-            exit(1);
-        }else if (flag == 0 || (flag==-1 && errno==EAGAIN)) {
-            continue;
+        if (flag != -1 || errno != EAGAIN) {
+            p = buf + flag - 4;
+            printf("%s ==> %u.%u.%u.%u\n", domain, (unsigned char)*p, (unsigned char)*(p + 1), (unsigned char)*(p + 2), (unsigned char)*(p + 3));
+            char str[INET_ADDRSTRLEN];
+            char* IP = (char*)inet_ntop(AF_INET, p, str, sizeof(str));
+            return IP;
+        } else{
+            printf("flag is %d and errno is %d \n", flag, errno);
+            sendto(sock, buf, sizeof(DnsHeader) + sizeof(DnsQuestion) + strlen(domain) + 2, 0, (struct sockaddr*)&addr, addr_len);
+            sleep(1);
         }
-        if (flag == -1 && errno != EAGAIN) {
-            perror("recv failed.\n");
-            exit(1);
-        }
-
-        p = buf + flag - 4;
-//        printf("%s ==> %u.%u.%u.%u\n", domain, (unsigned char)*p, (unsigned char)*(p + 1), (unsigned char)*(p + 2), (unsigned char)*(p + 3));
-        char str[INET_ADDRSTRLEN];
-        char* IP = (char*)inet_ntop(AF_INET, p, str, sizeof(str));
-        return IP;
     }
 }
 
-/*
 int main() {
-    printf("%s\n", GetRemoteDns((char*)"www.baidu.com"));
+    printf("%s\n", GetRemoteDns((char*)"www.monoid.top"));
     return 0;
-}*/
+}
